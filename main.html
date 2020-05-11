@@ -1,0 +1,245 @@
+<html>
+	<head>
+		<script src="nouislider.min.js"></script>
+		<link rel="Stylesheet" media="screen" type="text/css" href="nouislider.min.css">
+		<title>ChessRun</title>
+	</head>
+	<body>
+		<h1>ChessRun</h1>
+		<div class="select-container">
+			<select id="site">
+				<option>chess.com</option>
+				<option>lichess</option>
+			</select>
+		</div>
+		<div class="select-container">
+			<select id="gametype">
+				<option>Bullet</option>
+				<option>Blitz</option>
+				<option>Puzzles</option>
+			</select>	
+		</div>
+		<span>Extra: </span><div class="select-container">
+			<select id="extra">
+				<option value="">None</option>
+				<option value=" Sac Queen">Sac Queen</option>
+				<option value=" Bong Cloud">Bong Cloud</option>
+			</select>	
+		</div>
+		<div id="rating-slider"></div>
+		<p id="display">1500 - 2500</p>
+		<button id="make-splits">Generate Splits File</button>
+		<h2>Connection Status</h2>
+		<p id="connection">
+			Waiting for Connection
+		</p>
+	</body>
+</html>
+
+<script>
+	// Initialise globals
+	let site = "chess.com";
+	let runtype = "Bullet";
+	let extra = "";
+	let mini = 1500;
+	let maxi = 2500;
+	let checkpoints = [1500, 1550, 1600, 1650, 1700, 1750, 1800, 1850, 1900, 1950, 2000, 2100, 2200, 2300, 2400, 2500];
+
+	// Set Up Rating Sliders
+	let slider = document.getElementById("rating-slider");
+	noUiSlider.create(slider, {
+		connect: true,
+		step: 100,
+		tooltips: true,
+		handles: 2,
+		start: [1500, 2500],
+		range: {
+			'min': 800,
+			'max': 3300
+		},
+		format: {
+			to: (val) => Math.trunc(val),
+			from: (val) => Number(val)
+		}
+	});
+
+	slider.noUiSlider.on("update", (values) => {
+		mini = values[0];
+		maxi = values[1];
+		// Also update checkpoints here
+		let newCheckpoints = [];
+		for (let i = mini; i <= maxi; i+=100) {
+			newCheckpoints.push(i);
+		}
+		checkpoints = newCheckpoints;
+		console.log(checkpoints);
+		document.getElementById("display").innerText = `${mini} - ${maxi}`;
+	});
+
+	document.getElementById("gametype").addEventListener("change", (e) => {
+		runtype = e.target.value;
+	});
+
+	document.getElementById("site").addEventListener("change", (e) => {
+		site = e.target.value;
+	});
+
+	document.getElementById("extra").addEventListener("change", (e) => {
+		extra = e.target.value;
+	});
+
+	// Use this to update connection info when stuff happens.
+	const connectionEl = document.getElementById("connection");
+
+	// Here is where we need to start the websocket server.
+	const WebSocket = require('ws');
+	const wss = new WebSocket.Server({ port: 8055 });
+
+	// Evenutally i aim to make a nice app to configure this all,
+	// But to start, I am just going to setup a default speedrun from 1500->2500
+	let index = -1;
+	let sockets = [];
+	let webext = null;
+	let liveview = null;
+
+	wss.on("connection", (socket, req) => {
+		// This is either live view, or the browser extension
+		// If it's the browser it will send a identifying message
+		if (sockets.length == 0) {
+			connectionEl.innerText = "Client Connected"
+		} else {
+			connectionEl.innerText = "Both Clients Connected - Ready for SpeedRun"
+		}
+
+		let index = sockets.length;
+		sockets.push(socket);
+
+		socket.onmessage = (ev) => {
+			let message = JSON.parse(ev.data);
+			if (message.name && message.name == "ext") {
+				// Set the indexes correctly (even for future)
+				webext = index;
+				liveview = webext == 0 ? 1 : 0;
+				if (sockets.length == 1) {
+					connectionEl.innerText = "Browser Extension Connected - Waiting for Live View";
+				}
+			} else {
+				// It is a message, most likely a rating update string
+				if (socket == sockets[webext]) {
+					console.log("Sending update to liveview");
+					ratingUpdate(ev.data, sockets[liveview]);
+				} else { 
+					console.log("Message from liveview?")
+				}
+			}
+		};
+
+		socket.onclose = (ev) => {
+			if (index == webext) {
+				connectionEl.innerText = "LiveView Connected - Waiting for Browser Extension";
+				webext = null;
+			} else {
+				connectionEl.innerText = "Browser Extension Connected - Waiting for Live View";
+				liveview = null;
+			}
+			console.log("Disconnected")
+			sockets.splice(index, 1);
+		};
+	});
+
+	const ratingUpdate = (ratingString, liveViewSocket) => {
+		// If the rating merits a new split time, we need to send that to the websocket
+		if (ratingString.endsWith("?")) {
+			ratingString = ratingString.slice(0, ratingString.length - 1);
+		}
+		let data = Number(ratingString);
+		console.log("New Rating:", data);
+		let newIndex = index;
+		for (let i = 0; i < checkpoints.length; i++) {
+			if (data >= checkpoints[i]) {
+				newIndex = i;
+			}
+		}
+		if (index == -1 && newIndex == 0) {
+			liveViewSocket.send("start");
+		}
+		if (newIndex > index) {
+			liveViewSocket.send('split');
+			index = newIndex;
+		}
+	};
+
+	document.getElementById("make-splits").addEventListener('click', () => {
+		let category = `${site} ${runtype} ${mini}-${maxi}${extra}`;
+		let result = `<?xml version="1.0" encoding="UTF-8"?><Run version="1.8.0"><GameIcon /><GameName>Chess</GameName><CategoryName>${category}</CategoryName><Metadata><Run id="" /><Platform usesEmulator="False" /><Region /><SpeedrunComVariables /><CustomVariables /></Metadata><Offset>00:00:00.0000000</Offset><AttemptCount>0</AttemptCount><AttemptHistory /><Segments>`;
+		for (let i = mini; i < maxi; i+= 100) {
+			result += `<Segment><Name>${i}</Name><Icon /><SplitTimes><SplitTime name="Personal Best" /></SplitTimes><BestSegmentTime /><SegmentHistory /></Segment>`;
+		}
+		result += `</Segments><AutoSplitterSettings /></Run>`;	
+		download(result);
+	});
+
+	function download(text) {
+		var element = document.createElement('a');
+		element.setAttribute('href', 'data:application/xml;charset=utf-8,' + encodeURIComponent(text));
+		element.setAttribute('download', "splits.lss");
+
+		element.style.display = 'none';
+		document.body.appendChild(element);
+
+		element.click();
+
+		document.body.removeChild(element);
+	}
+</script>
+
+<style>
+#rating-slider {
+	margin-top: 4rem;
+	margin-bottom: 2rem;
+	max-width: 80%;
+	margin-left: 5%;
+}
+html {
+	background-color: #1f1f1f;
+	color: #fb6a6a;
+	font-family: "Lucida Sans Unicode", "Lucida Grande", sans-serif;
+}
+.noUi-connect {
+	background-color: #fb6a6a;
+}
+.noUi-tooltip {
+    display: none;
+}
+.noUi-active .noUi-tooltip {
+    display: block;
+}
+
+#make-splits {
+	padding: 12px;
+}
+select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding: .5em;
+    background: #efefef;
+    border: none;
+    border-radius: 3px;
+    padding: 1em 2em 1em 1em;
+    font-size: 1em;
+}
+.select-container {position:relative; display: inline;}
+.select-container:after {content:""; width:0; height:0; position:absolute; pointer-events: none;}
+.select-container:after {
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    top: .3em;
+    right: .75em;
+    border-top: 8px solid black;
+    opacity: 0.5;
+}
+select::-ms-expand {
+    display: none;
+}
+</style>

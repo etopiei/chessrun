@@ -1,0 +1,46 @@
+{
+  "name": "chessrun",
+  "version": "1.0.0",
+  "description": "A host for the chessrun extension",
+  "main": "app.js",
+  "scripts": {
+    "start": "electron app.js",
+    "release": "electron-builder",
+    "test": "echo Success!"
+  },
+  "repository": "https://github.com/etopiei/chessrun",
+  "author": "etopiei",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^7.2.5"
+  },
+  "devDependencies": {
+    "electron": "^8.2.5",
+    "electron-builder": "^22.6.0"
+  },
+  "build": {
+    "appId": "net.chessrun.etopiei",
+    "publish": "github",
+    "dmg": {
+      "contents": [
+        {
+          "x": 512,
+          "y": 512
+        },
+        {
+          "x": 512,
+          "y": 512,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "appImage": {
+      "license": "LICENSE"
+    },
+    "nsis": {
+      "createDesktopShortcut": false,
+      "license": "LICENSE"
+    }
+  }
+}
