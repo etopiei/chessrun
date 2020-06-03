@@ -121,15 +121,15 @@
 				webext = index;
 				liveview = webext == 0 ? 1 : 0;
 				if (sockets.length == 1) {
-					connectionEl.innerText = "Browser Extension Connected - Waiting for Live View";
+					connectionEl.innerText = "Browser Extension Connected - Waiting for Live Split";
 				}
 			} else {
 				// It is a message, most likely a rating update string
 				if (socket == sockets[webext]) {
-					console.log("Sending update to liveview");
+					console.log("Sending update to livesplit");
 					ratingUpdate(ev.data, sockets[liveview]);
 				} else { 
-					console.log("Message from liveview?")
+					console.log("Message from livsplit")
 				}
 			}
 		};
@@ -139,7 +139,7 @@
 				connectionEl.innerText = "LiveView Connected - Waiting for Browser Extension";
 				webext = null;
 			} else {
-				connectionEl.innerText = "Browser Extension Connected - Waiting for Live View";
+				connectionEl.innerText = "Browser Extension Connected - Waiting for Live Split";
 				liveview = null;
 			}
 			console.log("Disconnected")
